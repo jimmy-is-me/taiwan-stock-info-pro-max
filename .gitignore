@@ -30,7 +30,7 @@ error_log
 *.temp
 ~*
 
-# Node modules (if any)
+# Node modules
 node_modules/
 package-lock.json
 
@@ -41,3 +41,12 @@ composer.lock
 # Environment
 .env
 .env.local
+
+# Check and script files
+check-plugin.php
+*.ps1
+*_GUIDE.md
+*_REPORT.md
+CREATE_*.md
+INSTALLATION.md
+QUICK_*.md

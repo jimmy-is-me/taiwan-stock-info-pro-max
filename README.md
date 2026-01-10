@@ -1,90 +1,31 @@
-# 台股資訊中心 Pro Max
+# Taiwan Stock Info Pro Max
 
-WordPress 插件 - ETF 配息與新股申購資訊專業投資版
+WordPress Plugin - ETF Dividend and IPO Information for Professional Investors
 
-## 功能特色
+## Description
 
-### 📈 ETF 投資分析表
-- 顯示 30 檔熱門 ETF 完整資訊
-- 股價、殖利率、配息金額
-- 張成本、年收益、費用率
-- 配息頻率、2025 報酬率、評級
-- 主要成分股資訊
-- 支援 DataTables 排序功能
+A professional WordPress plugin that provides comprehensive Taiwan stock market information including ETF dividend analysis and IPO subscription details.
 
-### 🎯 新股申購資訊
-- 今日可申購標的提醒
-- 申購期間、開獎日、價格
-- 預估報酬率與投資建議
-- 自動過濾當日可申購標的
+## Features
 
-### 💎 專業投資策略建議
-提供四種投資策略組合：
-- **穩健配息策略**：年化殖利率超過 10%，適合退休族
-- **成長型策略**：2025 報酬率超過 18%，追蹤科技龍頭
-- **平衡配置策略**：兼顧成長與配息，風險分散
-- **低成本高效策略**：費用率低於 0.45%，長期持有
+- **ETF Investment Analysis**: Complete information on 30 popular ETFs
+- **IPO Subscription Info**: Today's available IPO opportunities
+- **Investment Strategies**: 4 professional investment strategy recommendations
+- **Market Analysis**: Deep market analysis and statistics
 
-### 📊 市場深度分析
-- 配息能力分析（最高/平均殖利率）
-- 成長表現分析（最佳報酬率）
-- 成本效益分析（最低成本/最高收益）
+## Installation
 
-### 🔄 資料更新功能
-- AJAX 即時更新
-- 快取機制（2 小時）
-- 每日自動更新排程
+1. Download `taiwan-stock-info-pro-max.php`
+2. Upload to `/wp-content/plugins/` directory
+3. Activate the plugin in WordPress admin
+4. Find "台股資訊" in the left menu
 
-## 安裝方式
+## Requirements
 
-1. 下載插件檔案 `taiwan-stock-info-pro-max.php`
-2. 上傳到 WordPress 的 `/wp-content/plugins/` 目錄
-3. 在 WordPress 後台「外掛」頁面啟用「台股資訊中心 Pro Max」
-4. 在左側選單找到「台股資訊」進入管理頁面
+- WordPress 5.0+
+- PHP 7.0+
+- Administrator privileges
 
-## 系統需求
+## License
 
-- WordPress 5.0 或更高版本
-- PHP 7.0 或更高版本
-- 管理員權限（manage_options）
-
-## 使用說明
-
-1. 啟用插件後，在 WordPress 後台左側選單會出現「台股資訊」選項
-2. 點擊進入管理頁面，即可查看所有 ETF 和申購資訊
-3. 點擊「更新全部資料」按鈕可手動更新資料
-4. 資料會自動快取 2 小時，減少伺服器負擔
-
-## 技術規格
-
-- **版本**：3.0.0
-- **快取時間**：7200 秒（2 小時）
-- **資料庫**：使用 WordPress Transients API
-- **前端框架**：DataTables 1.13.7
-- **樣式**：內嵌 CSS，響應式設計
-
-## 安全性
-
-- 所有輸出都經過 `esc_html()` 和 `esc_attr()` 處理
-- AJAX 請求使用 nonce 驗證
-- 權限檢查（`current_user_can('manage_options')`）
-- 遵循 WordPress 編碼標準
-
-## 授權
-
-本插件為開源專案，可自由使用和修改。
-
-## 更新日誌
-
-### 3.0.0
-- 初始版本發布
-- 完整的 ETF 分析功能
-- 新股申購資訊
-- 專業投資策略建議
-- 市場深度分析
-
-## 相關資源
-
-- [台灣證券交易所](https://www.twse.com.tw/)
-- [投信投顧公會](https://www.sitca.org.tw/)
-- [MoneyDJ ETF](https://www.moneydj.com/etf/x/default.xdjhtm)
+Open source - free to use and modify.
