@@ -1,0 +1,43 @@
+# WordPress
+.htaccess
+wp-config.php
+wp-content/uploads/
+wp-content/blogs.dir/
+wp-content/upgrade/
+wp-content/backup-db/
+wp-content/advanced-cache.php
+wp-content/wp-cache-config.php
+wp-content/cache/
+wp-content/cache/supercache/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+error_log
+
+# Temporary files
+*.tmp
+*.temp
+~*
+
+# Node modules (if any)
+node_modules/
+package-lock.json
+
+# Composer
+vendor/
+composer.lock
+
+# Environment
+.env
+.env.local
