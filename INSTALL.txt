@@ -1,0 +1,29 @@
+WordPress Plugin Installation Guide
+====================================
+
+Plugin Name: Taiwan Stock Info Pro Max
+Version: 3.0.0
+
+INSTALLATION:
+-------------
+1. Download taiwan-stock-info-pro-max.php
+2. Upload to /wp-content/plugins/taiwan-stock-info-pro-max/
+3. Activate in WordPress Admin > Plugins
+4. Find "台股資訊" in left menu
+
+REQUIREMENTS:
+-------------
+- WordPress 5.0+
+- PHP 7.0+
+- Administrator access
+
+FEATURES:
+---------
+- ETF Investment Analysis (30 ETFs)
+- IPO Subscription Information
+- Investment Strategy Recommendations
+- Market Analysis Dashboard
+
+SUPPORT:
+--------
+For issues, check WordPress error logs and browser console.
