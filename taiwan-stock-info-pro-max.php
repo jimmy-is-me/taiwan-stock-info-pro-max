@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 台股資訊中心 Pro Max
  * Description: ETF 配息與新股申購即時資訊 - 孟菲斯風格版
- * Version: 4.1.0
+ * Version: 4.2
  * Author: wumetax
  */
 
