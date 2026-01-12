@@ -2,8 +2,8 @@
 /**
  * Plugin Name: 台股資訊中心 Pro Max
  * Description: ETF 配息與新股申購即時資訊 - 專業投資版
- * Version: 3.1.0
- * Author: Professional Investor
+ * Version: 3.2.0
+ * Author: wumetax
  * Text Domain: taiwan-stock-info-pro-max
  */
 
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 class Taiwan_Stock_Info_Pro_Max {
 
     private static $instance = null;
-    private $cache_time = 600; // 10分鐘快取（盤中即時更新）
+    private $cache_time = 600;
 
     public static function get_instance() {
         if (null === self::$instance) {
@@ -26,22 +26,31 @@ class Taiwan_Stock_Info_Pro_Max {
             add_action('admin_menu', array($this, 'add_menu'));
             add_action('admin_enqueue_scripts', array($this, 'load_assets'));
             add_action('wp_ajax_stock_update', array($this, 'ajax_update'));
+            add_action('admin_head', array($this, 'remove_admin_margins'));
         }
 
-        // 智能更新排程
         add_action('stock_smart_update', array($this, 'smart_update'));
-
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
     }
 
+    /**
+     * 移除管理後台邊距，實現全寬佈局
+     */
+    public function remove_admin_margins() {
+        $screen = get_current_screen();
+        if ($screen && $screen->id === 'toplevel_page-stock-dashboard') {
+            echo '<style>
+                #wpcontent { padding-left: 0 !important; }
+                .stock-dash-pro { margin: 0 !important; max-width: 100% !important; }
+            </style>';
+        }
+    }
+
     public function activate() {
-        // 設定每 10 分鐘執行一次的檢查
         if (!wp_next_scheduled('stock_smart_update')) {
             wp_schedule_event(time(), 'stock_ten_minutes', 'stock_smart_update');
         }
-
-        // 註冊自訂排程間隔
         add_filter('cron_schedules', array($this, 'custom_cron_schedules'));
     }
 
@@ -51,29 +60,24 @@ class Taiwan_Stock_Info_Pro_Max {
 
     public function custom_cron_schedules($schedules) {
         $schedules['stock_ten_minutes'] = array(
-            'interval' => 600, // 10 分鐘
+            'interval' => 600,
             'display' => __('每 10 分鐘')
         );
         return $schedules;
     }
 
-    /**
-     * 智能更新：只在週一到週五 7:00-14:30 更新
-     */
     public function smart_update() {
         $now = current_time('timestamp');
-        $day_of_week = date('N', $now); // 1=週一, 7=週日
+        $day_of_week = date('N', $now);
         $hour = (int)date('H', $now);
         $minute = (int)date('i', $now);
         $time_decimal = $hour + ($minute / 60);
 
-        // 檢查：週一到週五（1-5）且時間在 7:00-14:30
         if ($day_of_week >= 1 && $day_of_week <= 5 && $time_decimal >= 7 && $time_decimal <= 14.5) {
-            delete_transient('stock_etf_enhanced_v4');
-            delete_transient('stock_ipo_v4');
+            delete_transient('stock_etf_enhanced_v5');
+            delete_transient('stock_ipo_v5');
             $this->get_etf_enhanced();
             $this->get_ipo_data();
-
             error_log('[台股資訊] 盤中更新: ' . current_time('Y-m-d H:i:s'));
         }
     }
@@ -96,7 +100,27 @@ class Taiwan_Stock_Info_Pro_Max {
         wp_enqueue_script('jquery');
         wp_enqueue_script('datatables', 'https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js', array('jquery'), '1.13.7', true);
         wp_enqueue_style('datatables', 'https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css', array(), '1.13.7');
-        wp_add_inline_style('wp-admin', $this->css());
+
+        $css_file = plugin_dir_path(__FILE__) . 'assets/pro-style.css';
+        if (file_exists($css_file)) {
+            wp_enqueue_style('stock-pro-style', plugins_url('assets/pro-style.css', __FILE__), array(), '3.2.0');
+        } else {
+            wp_add_inline_style('wp-admin', $this->fallback_css());
+        }
+    }
+
+    /**
+     * 生成 ETF 外部連結
+     */
+    private function get_etf_url($code) {
+        return 'https://www.moneydj.com/etf/x/basic/basic0004.xdjhtm?etfid=' . urlencode($code) . '.TW';
+    }
+
+    /**
+     * 生成股票外部連結
+     */
+    private function get_stock_url($code) {
+        return 'https://www.google.com/finance/quote/' . urlencode($code) . ':TPE';
     }
 
     public function render() {
@@ -110,7 +134,6 @@ class Taiwan_Stock_Info_Pro_Max {
         $etf_time = get_option('stock_etf_update_time', '尚未更新');
         $ipo_time = get_option('stock_ipo_update_time', '尚未更新');
 
-        // 判斷目前是否為盤中時間
         $now = current_time('timestamp');
         $day = date('N', $now);
         $hour = (int)date('H', $now);
@@ -119,430 +142,473 @@ class Taiwan_Stock_Info_Pro_Max {
         $is_trading_time = ($day >= 1 && $day <= 5 && $time_decimal >= 7 && $time_decimal <= 14.5);
 
         ?>
-        <div class="wrap stock-dash-pro">
-            <!-- 頁首 -->
+        <div class="stock-dash-pro">
+            <!-- 全寬頁首 -->
             <div class="dashboard-header">
-                <div class="header-left">
-                    <h1>📈 台股資訊中心 <span class="pro-badge">PRO</span></h1>
-                    <p class="tagline">專業投資決策分析平台</p>
-                </div>
-                <div class="header-right">
-                    <?php if ($is_trading_time): ?>
-                    <div class="live-indicator">
-                        <span class="live-dot"></span>
-                        <span>盤中即時更新</span>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1>📈 台股資訊中心 <span class="pro-badge">PRO MAX</span></h1>
+                        <p class="tagline">專業投資決策分析平台 - 全方位市場數據監控</p>
                     </div>
-                    <?php else: ?>
-                    <div class="offline-indicator">
-                        <span class="offline-dot"></span>
-                        <span>非交易時段</span>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- 控制面板 -->
-            <div class="control-panel">
-                <div class="panel-section">
-                    <button class="btn-primary" onclick="updateData('all')" id="update-btn">
-                        <span class="dashicons dashicons-update"></span>
-                        手動更新資料
-                    </button>
-                </div>
-                <div class="panel-section status-section">
-                    <div class="status-item">
-                        <span class="status-icon">📊</span>
-                        <div>
-                            <small>ETF 資料</small>
-                            <strong><?php echo esc_html($etf_time); ?></strong>
-                        </div>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-icon">🎯</span>
-                        <div>
-                            <small>申購資料</small>
-                            <strong><?php echo esc_html($ipo_time); ?></strong>
-                        </div>
-                    </div>
-                </div>
-                <div id="status-msg" class="status-message"></div>
-            </div>
-
-            <!-- 系統說明 -->
-            <div class="info-card">
-                <div class="info-header">
-                    <span class="info-icon">💡</span>
-                    <strong>系統運作說明</strong>
-                </div>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <span class="badge badge-success">即時更新</span>
-                        <p>週一至週五 <strong>07:00-14:30</strong> 每 <strong>10 分鐘</strong>自動更新資料</p>
-                    </div>
-                    <div class="info-item">
-                        <span class="badge badge-info">智能排程</span>
-                        <p>非交易時段自動暫停更新，節省伺服器資源</p>
-                    </div>
-                    <div class="info-item">
-                        <span class="badge badge-warning">表格排序</span>
-                        <p>點擊任何欄位標題可進行<strong>升序/降序</strong>排序</p>
-                    </div>
-                    <div class="info-item">
-                        <span class="badge badge-primary">一鍵更新</span>
-                        <p>點擊「手動更新」可立即同步最新市場資料</p>
-                    </div>
-                </div>
-            </div>
-
-            <?php if (!empty($today_ipo)): ?>
-            <!-- 今日可申購 -->
-            <div class="card card-highlight">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span class="title-icon">🔥</span>
-                        <h2>今日可申購標的</h2>
-                        <span class="date-badge"><?php echo current_time('Y/m/d'); ?></span>
-                    </div>
-                    <span class="count-badge"><?php echo count($today_ipo); ?> 檔</span>
-                </div>
-                <div class="table-container">
-                    <table id="today-ipo-table" class="data-table">
-                        <thead>
-                            <tr>
-                                <th>代號</th><th>名稱</th><th>類型</th><th>申購期間</th>
-                                <th>開獎日</th><th>承銷價</th><th>預估報酬</th><th>投資建議</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($today_ipo as $i): ?>
-                            <tr class="hot-row">
-                                <td><span class="code"><?php echo esc_html($i['code']); ?></span></td>
-                                <td><strong><?php echo esc_html($i['name']); ?></strong></td>
-                                <td><span class="label label-<?php echo esc_attr($i['type_class']); ?>"><?php echo esc_html($i['type']); ?></span></td>
-                                <td><?php echo esc_html($i['period']); ?></td>
-                                <td><?php echo esc_html($i['lottery']); ?></td>
-                                <td><strong><?php echo esc_html($i['price']); ?></strong></td>
-                                <td class="<?php echo esc_attr($i['ret_cls']); ?>"><strong><?php echo esc_html($i['return']); ?></strong></td>
-                                <td><span class="rating"><?php echo esc_html($i['tip']); ?></span></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <?php endif; ?>
-
-            <!-- 新股申購時程（一個月內） -->
-            <?php if (!empty($ipo)): ?>
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span class="title-icon">🎯</span>
-                        <h2>新股申購時程表</h2>
-                        <span class="subtitle">近一個月可參與標的</span>
-                    </div>
-                    <span class="count-badge"><?php echo count($ipo); ?> 檔</span>
-                </div>
-                <div class="table-container">
-                    <table id="ipo-table" class="data-table">
-                        <thead>
-                            <tr>
-                                <th>代號</th><th>名稱</th><th>類型</th><th>申購期間</th>
-                                <th>開獎日</th><th>承銷價</th><th>預估報酬</th><th>狀態</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($ipo as $i): ?>
-                            <tr>
-                                <td><span class="code"><?php echo esc_html($i['code']); ?></span></td>
-                                <td><strong><?php echo esc_html($i['name']); ?></strong></td>
-                                <td><span class="label label-<?php echo esc_attr($i['type_class']); ?>"><?php echo esc_html($i['type']); ?></span></td>
-                                <td><?php echo esc_html($i['period']); ?></td>
-                                <td><?php echo esc_html($i['lottery']); ?></td>
-                                <td><?php echo esc_html($i['price']); ?></td>
-                                <td class="<?php echo esc_attr($i['ret_cls']); ?>"><strong><?php echo esc_html($i['return']); ?></strong></td>
-                                <td><span class="status status-<?php echo esc_attr($i['status']); ?>"><?php echo esc_html($i['status_txt']); ?></span></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <?php endif; ?>
-
-            <!-- ETF 投資分析表 -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span class="title-icon">🏆</span>
-                        <h2>ETF 投資分析表 Top 30</h2>
-                        <span class="subtitle">點擊欄位標題可排序</span>
-                    </div>
-                    <span class="count-badge">30 檔</span>
-                </div>
-                <div class="table-container table-scroll">
-                    <table id="etf-table" class="data-table etf-table">
-                        <thead>
-                            <tr>
-                                <th>排名</th><th>代號</th><th>名稱</th><th>股價</th>
-                                <th>殖利率</th><th>配息/股</th><th>張成本</th><th>年收益</th>
-                                <th>費用率</th><th>配息頻率</th><th>2025報酬</th><th>評級</th>
-                                <th>主要成分股</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($etf as $k => $e): ?>
-                            <tr class="<?php echo $k < 3 ? 'top-row' : ''; ?>">
-                                <td class="rank">
-                                    <?php 
-                                    if ($k === 0) echo '<span class="medal gold">🥇</span>';
-                                    elseif ($k === 1) echo '<span class="medal silver">🥈</span>';
-                                    elseif ($k === 2) echo '<span class="medal bronze">🥉</span>';
-                                    else echo '<span class="rank-num">' . ($k + 1) . '</span>';
-                                    ?>
-                                </td>
-                                <td><span class="code"><?php echo esc_html($e['code']); ?></span></td>
-                                <td><strong><?php echo esc_html($e['name']); ?></strong></td>
-                                <td><?php echo esc_html($e['price']); ?></td>
-                                <td class="highlight-red"><strong><?php echo esc_html($e['yield']); ?></strong></td>
-                                <td class="highlight-red"><?php echo esc_html($e['dividend']); ?></td>
-                                <td><?php echo esc_html($e['cost_per_lot']); ?></td>
-                                <td class="highlight-green"><strong><?php echo esc_html($e['annual_income']); ?></strong></td>
-                                <td><?php echo esc_html($e['expense']); ?></td>
-                                <td><span class="label label-<?php echo esc_attr($e['freq_c']); ?>"><?php echo esc_html($e['freq']); ?></span></td>
-                                <td class="<?php echo esc_attr($e['ret_c']); ?>"><strong><?php echo esc_html($e['ret']); ?></strong></td>
-                                <td class="stars"><?php echo $e['star']; ?></td>
-                                <td class="holdings"><?php echo esc_html($e['holdings']); ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="card-footer">
-                    <div class="footer-grid">
-                        <div class="footer-item">
-                            <span class="icon">💰</span>
-                            <div>
-                                <small>配息金額</small>
-                                <p>預估每股配息（元）</p>
+                    <div class="header-right">
+                        <?php if ($is_trading_time): ?>
+                        <div class="live-indicator">
+                            <span class="live-dot"></span>
+                            <div class="live-text">
+                                <strong>盤中即時更新</strong>
+                                <small>每 10 分鐘同步最新資料</small>
                             </div>
                         </div>
-                        <div class="footer-item">
-                            <span class="icon">📊</span>
-                            <div>
-                                <small>張成本</small>
-                                <p>買進一張（1000股）所需資金</p>
+                        <?php else: ?>
+                        <div class="offline-indicator">
+                            <span class="offline-dot"></span>
+                            <div class="offline-text">
+                                <strong>非交易時段</strong>
+                                <small>下次更新: 週一至週五 07:00</small>
                             </div>
                         </div>
-                        <div class="footer-item">
-                            <span class="icon">💵</span>
-                            <div>
-                                <small>年收益</small>
-                                <p>持有一張的年度配息收入</p>
-                            </div>
-                        </div>
-                        <div class="footer-item">
-                            <span class="icon">🎯</span>
-                            <div>
-                                <small>主要成分股</small>
-                                <p>前三大持股或投資標的</p>
-                            </div>
-                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
 
-            <!-- 專業投資策略 -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span class="title-icon">💎</span>
-                        <h2>專業投資策略建議</h2>
-                        <span class="subtitle">根據市場數據分析</span>
+            <div class="dashboard-main">
+                <!-- 控制面板 -->
+                <div class="control-panel">
+                    <div class="panel-left">
+                        <button class="btn-primary btn-update" onclick="updateData('all')" id="update-btn">
+                            <span class="dashicons dashicons-update"></span>
+                            手動更新資料
+                        </button>
+                        <button class="btn-secondary" onclick="location.reload()">
+                            <span class="dashicons dashicons-admin-page"></span>
+                            重新載入頁面
+                        </button>
                     </div>
-                </div>
-                <div class="strategy-container">
-                    <?php foreach ($ana['strategies'] as $s): ?>
-                    <div class="strategy-card <?php echo esc_attr($s['class']); ?>">
-                        <div class="strategy-badge"><?php echo $s['icon']; ?></div>
-                        <h3><?php echo esc_html($s['title']); ?></h3>
-
-                        <div class="strategy-etfs">
-                            <label>推薦 ETF</label>
-                            <div class="etf-tags">
-                                <?php foreach ($s['etfs'] as $etf): ?>
-                                <span class="etf-tag"><?php echo esc_html($etf); ?></span>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-
-                        <div class="strategy-allocation">
-                            <label>建議配置</label>
-                            <div class="allocation-chart">
-                                <?php foreach ($s['allocation'] as $idx => $item): ?>
-                                <div class="alloc-bar color-<?php echo $idx + 1; ?>" style="flex: <?php echo $item['percent']; ?>;">
-                                    <span class="alloc-name"><?php echo esc_html($item['name']); ?></span>
-                                    <span class="alloc-percent"><?php echo $item['percent']; ?>%</span>
+                    <div class="panel-center">
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="status-icon">📊</span>
+                                <div class="status-info">
+                                    <small>ETF 資料更新</small>
+                                    <strong><?php echo esc_html($etf_time); ?></strong>
                                 </div>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-icon">🎯</span>
+                                <div class="status-info">
+                                    <small>申購資料更新</small>
+                                    <strong><?php echo esc_html($ipo_time); ?></strong>
+                                </div>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-icon">⏰</span>
+                                <div class="status-info">
+                                    <small>系統時間</small>
+                                    <strong><?php echo current_time('Y/m/d H:i:s'); ?></strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="status-msg" class="status-message"></div>
+                </div>
+
+                <!-- 功能說明區 -->
+                <div class="info-banner">
+                    <div class="info-section">
+                        <span class="info-icon">💡</span>
+                        <div class="info-content">
+                            <h3>系統功能說明</h3>
+                            <div class="feature-grid">
+                                <div class="feature-item">
+                                    <span class="feature-badge success">🔄 智能更新</span>
+                                    <p>週一至週五 <strong>07:00-14:30</strong> 盤中自動更新，每 <strong>10 分鐘</strong>同步最新資料</p>
+                                </div>
+                                <div class="feature-item">
+                                    <span class="feature-badge info">🔗 點擊查詢</span>
+                                    <p>點擊 <strong>ETF 代號或名稱</strong>可開啟外部詳細資訊，快速查看完整數據</p>
+                                </div>
+                                <div class="feature-item">
+                                    <span class="feature-badge warning">📊 表格排序</span>
+                                    <p>點擊任何<strong>欄位標題</strong>進行升序/降序排序，自由分析比較</p>
+                                </div>
+                                <div class="feature-item">
+                                    <span class="feature-badge primary">⚡ 即時計算</span>
+                                    <p>自動計算<strong>配息金額、張成本、年收益</strong>，精準投資試算</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <?php if (!empty($today_ipo)): ?>
+                <!-- 今日可申購 -->
+                <div class="card card-hot">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="title-icon">🔥</span>
+                            <div>
+                                <h2>今日可申購標的</h2>
+                                <span class="subtitle"><?php echo current_time('Y年m月d日'); ?> 開放申購</span>
+                            </div>
+                        </div>
+                        <span class="count-badge hot"><?php echo count($today_ipo); ?> 檔可申購</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="today-ipo-table" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>代號</th><th>名稱</th><th>類型</th><th>申購期間</th>
+                                    <th>開獎日</th><th>承銷價</th><th>預估報酬</th><th>投資建議</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($today_ipo as $i): ?>
+                                <tr class="hot-row">
+                                    <td><a href="<?php echo esc_url($this->get_stock_url($i['code'])); ?>" target="_blank" class="code-link"><?php echo esc_html($i['code']); ?></a></td>
+                                    <td><a href="<?php echo esc_url($this->get_stock_url($i['code'])); ?>" target="_blank" class="name-link"><strong><?php echo esc_html($i['name']); ?></strong></a></td>
+                                    <td><span class="label label-<?php echo esc_attr($i['type_class']); ?>"><?php echo esc_html($i['type']); ?></span></td>
+                                    <td><?php echo esc_html($i['period']); ?></td>
+                                    <td><?php echo esc_html($i['lottery']); ?></td>
+                                    <td class="price"><strong><?php echo esc_html($i['price']); ?></strong></td>
+                                    <td class="<?php echo esc_attr($i['ret_cls']); ?>"><strong><?php echo esc_html($i['return']); ?></strong></td>
+                                    <td><span class="rating"><?php echo esc_html($i['tip']); ?></span></td>
+                                </tr>
                                 <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <!-- 新股申購時程 -->
+                <?php if (!empty($ipo)): ?>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="title-icon">🎯</span>
+                            <div>
+                                <h2>新股申購時程表</h2>
+                                <span class="subtitle">近一個月內可參與標的 - 點擊名稱查看詳情</span>
                             </div>
                         </div>
-
-                        <div class="strategy-pros">
-                            <label>✅ 優勢特點</label>
-                            <ul>
-                                <?php foreach ($s['pros'] as $pro): ?>
-                                <li><?php echo esc_html($pro); ?></li>
+                        <span class="count-badge"><?php echo count($ipo); ?> 檔</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="ipo-table" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>代號</th><th>名稱</th><th>類型</th><th>申購期間</th>
+                                    <th>開獎日</th><th>承銷價</th><th>預估報酬</th><th>狀態</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($ipo as $i): ?>
+                                <tr>
+                                    <td><a href="<?php echo esc_url($this->get_stock_url($i['code'])); ?>" target="_blank" class="code-link"><?php echo esc_html($i['code']); ?></a></td>
+                                    <td><a href="<?php echo esc_url($this->get_stock_url($i['code'])); ?>" target="_blank" class="name-link"><strong><?php echo esc_html($i['name']); ?></strong></a></td>
+                                    <td><span class="label label-<?php echo esc_attr($i['type_class']); ?>"><?php echo esc_html($i['type']); ?></span></td>
+                                    <td><?php echo esc_html($i['period']); ?></td>
+                                    <td><?php echo esc_html($i['lottery']); ?></td>
+                                    <td class="price"><?php echo esc_html($i['price']); ?></td>
+                                    <td class="<?php echo esc_attr($i['ret_cls']); ?>"><strong><?php echo esc_html($i['return']); ?></strong></td>
+                                    <td><span class="status status-<?php echo esc_attr($i['status']); ?>"><?php echo esc_html($i['status_txt']); ?></span></td>
+                                </tr>
                                 <?php endforeach; ?>
-                            </ul>
-                        </div>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <?php endif; ?>
 
-                        <div class="strategy-stats">
-                            <div class="stat">
-                                <small>預期報酬</small>
-                                <strong><?php echo esc_html($s['expected_return']); ?></strong>
+                <!-- ETF 投資分析表 -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="title-icon">🏆</span>
+                            <div>
+                                <h2>ETF 投資分析表 Top 30</h2>
+                                <span class="subtitle">點擊代號/名稱查看詳細資訊 · 點擊欄位標題可排序</span>
                             </div>
-                            <div class="stat">
-                                <small>風險等級</small>
-                                <strong><?php echo esc_html($s['risk_level']); ?></strong>
+                        </div>
+                        <span class="count-badge">30 檔</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="etf-table" class="data-table etf-table">
+                            <thead>
+                                <tr>
+                                    <th>排名</th><th>代號</th><th>名稱</th><th>股價</th>
+                                    <th>殖利率</th><th>配息/股</th><th>張成本</th><th>年收益</th>
+                                    <th>費用率</th><th>配息頻率</th><th>2025報酬</th><th>評級</th>
+                                    <th>主要成分股</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($etf as $k => $e): ?>
+                                <tr class="<?php echo $k < 3 ? 'top-row' : ''; ?>">
+                                    <td class="rank">
+                                        <?php 
+                                        if ($k === 0) echo '<span class="medal">🥇</span>';
+                                        elseif ($k === 1) echo '<span class="medal">🥈</span>';
+                                        elseif ($k === 2) echo '<span class="medal">🥉</span>';
+                                        else echo '<span class="rank-num">' . ($k + 1) . '</span>';
+                                        ?>
+                                    </td>
+                                    <td><a href="<?php echo esc_url($this->get_etf_url($e['code'])); ?>" target="_blank" class="code-link"><?php echo esc_html($e['code']); ?></a></td>
+                                    <td><a href="<?php echo esc_url($this->get_etf_url($e['code'])); ?>" target="_blank" class="name-link"><strong><?php echo esc_html($e['name']); ?></strong></a></td>
+                                    <td class="price"><?php echo esc_html($e['price']); ?></td>
+                                    <td class="highlight-red"><strong><?php echo esc_html($e['yield']); ?></strong></td>
+                                    <td class="highlight-red"><?php echo esc_html($e['dividend']); ?></td>
+                                    <td class="price"><?php echo esc_html($e['cost_per_lot']); ?></td>
+                                    <td class="highlight-green"><strong><?php echo esc_html($e['annual_income']); ?></strong></td>
+                                    <td><?php echo esc_html($e['expense']); ?></td>
+                                    <td><span class="label label-<?php echo esc_attr($e['freq_c']); ?>"><?php echo esc_html($e['freq']); ?></span></td>
+                                    <td class="<?php echo esc_attr($e['ret_c']); ?>"><strong><?php echo esc_html($e['ret']); ?></strong></td>
+                                    <td class="stars"><?php echo $e['star']; ?></td>
+                                    <td class="holdings"><?php echo esc_html($e['holdings']); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="card-footer">
+                        <div class="footer-info">
+                            <h4>📋 欄位說明</h4>
+                            <div class="footer-grid">
+                                <div class="footer-item">
+                                    <span class="icon">💰</span>
+                                    <div>
+                                        <strong>配息/股</strong>
+                                        <p>預估每股配息金額（元）</p>
+                                    </div>
+                                </div>
+                                <div class="footer-item">
+                                    <span class="icon">📊</span>
+                                    <div>
+                                        <strong>張成本</strong>
+                                        <p>買進一張（1000股）所需資金</p>
+                                    </div>
+                                </div>
+                                <div class="footer-item">
+                                    <span class="icon">💵</span>
+                                    <div>
+                                        <strong>年收益</strong>
+                                        <p>持有一張的年度配息收入</p>
+                                    </div>
+                                </div>
+                                <div class="footer-item">
+                                    <span class="icon">🎯</span>
+                                    <div>
+                                        <strong>主要成分股</strong>
+                                        <p>前三大持股或投資標的</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <?php endforeach; ?>
                 </div>
-            </div>
 
-            <!-- 市場深度分析 -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span class="title-icon">📊</span>
-                        <h2>市場深度分析</h2>
+                <!-- 投資策略 -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="title-icon">💎</span>
+                            <div>
+                                <h2>專業投資策略建議</h2>
+                                <span class="subtitle">基於市場數據分析的配置建議</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="strategy-grid">
+                        <?php foreach ($ana['strategies'] as $s): ?>
+                        <div class="strategy-card <?php echo esc_attr($s['class']); ?>">
+                            <div class="strategy-header">
+                                <span class="strategy-icon"><?php echo $s['icon']; ?></span>
+                                <h3><?php echo esc_html($s['title']); ?></h3>
+                            </div>
+                            <div class="strategy-body">
+                                <div class="strategy-section">
+                                    <label>推薦 ETF</label>
+                                    <div class="etf-tags">
+                                        <?php foreach ($s['etfs'] as $etf_code): ?>
+                                        <a href="<?php echo esc_url($this->get_etf_url($etf_code)); ?>" target="_blank" class="etf-tag"><?php echo esc_html($etf_code); ?></a>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <div class="strategy-section">
+                                    <label>建議配置比例</label>
+                                    <div class="allocation-bar">
+                                        <?php foreach ($s['allocation'] as $idx => $item): ?>
+                                        <div class="alloc-segment color-<?php echo $idx + 1; ?>" style="flex: <?php echo $item['percent']; ?>;">
+                                            <span class="alloc-name"><?php echo esc_html($item['name']); ?></span>
+                                            <span class="alloc-percent"><?php echo $item['percent']; ?>%</span>
+                                        </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <div class="strategy-section">
+                                    <label>✅ 優勢特點</label>
+                                    <ul class="pros-list">
+                                        <?php foreach ($s['pros'] as $pro): ?>
+                                        <li><?php echo esc_html($pro); ?></li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                </div>
+                                <div class="strategy-metrics">
+                                    <div class="metric">
+                                        <small>預期報酬</small>
+                                        <strong><?php echo esc_html($s['expected_return']); ?></strong>
+                                    </div>
+                                    <div class="metric">
+                                        <small>風險等級</small>
+                                        <strong><?php echo esc_html($s['risk_level']); ?></strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
                     </div>
                 </div>
 
-                <div class="analysis-section">
-                    <h3>💰 配息能力分析</h3>
-                    <div class="metric-grid">
-                        <div class="metric-box highlight">
-                            <div class="metric-value"><?php echo esc_html($ana['top_yield']); ?></div>
-                            <div class="metric-label">最高殖利率</div>
+                <!-- 市場分析 -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="title-icon">📊</span>
+                            <div>
+                                <h2>市場深度分析</h2>
+                                <span class="subtitle">綜合數據統計與比較</span>
+                            </div>
                         </div>
-                        <div class="metric-box">
-                            <div class="metric-value"><?php echo esc_html($ana['avg_yield']); ?></div>
-                            <div class="metric-label">平均殖利率</div>
+                    </div>
+
+                    <div class="analysis-container">
+                        <div class="analysis-section">
+                            <h3>💰 配息能力分析</h3>
+                            <div class="metric-grid">
+                                <div class="metric-box highlight">
+                                    <div class="metric-value"><?php echo esc_html($ana['top_yield']); ?></div>
+                                    <div class="metric-label">最高殖利率</div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="metric-value"><?php echo esc_html($ana['avg_yield']); ?></div>
+                                    <div class="metric-label">平均殖利率</div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="metric-value"><?php echo esc_html($ana['high_yield_count']); ?></div>
+                                    <div class="metric-label">高殖利率 ETF (>10%)</div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="metric-value"><?php echo esc_html($ana['monthly_count']); ?></div>
+                                    <div class="metric-label">月配息 ETF</div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="metric-box">
-                            <div class="metric-value"><?php echo esc_html($ana['high_yield_count']); ?></div>
-                            <div class="metric-label">高殖利率 ETF (>10%)</div>
+
+                        <div class="analysis-section">
+                            <h3>🚀 成長表現分析</h3>
+                            <div class="metric-grid">
+                                <div class="metric-box highlight">
+                                    <div class="metric-value"><?php echo esc_html($ana['top_ret']); ?></div>
+                                    <div class="metric-label">最佳 2025 報酬</div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="metric-value"><?php echo esc_html($ana['avg_return']); ?></div>
+                                    <div class="metric-label">平均報酬率</div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="metric-value"><?php echo esc_html($ana['high_growth_count']); ?></div>
+                                    <div class="metric-label">高成長 ETF (>15%)</div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="metric-value"><?php echo esc_html($ana['tech_count']); ?></div>
+                                    <div class="metric-label">半導體類 ETF</div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="metric-box">
-                            <div class="metric-value"><?php echo esc_html($ana['monthly_count']); ?></div>
-                            <div class="metric-label">月配息 ETF</div>
+
+                        <div class="analysis-section">
+                            <h3>💵 成本效益分析</h3>
+                            <div class="cost-comparison">
+                                <div class="cost-item">
+                                    <strong>最低成本入場</strong>
+                                    <span><?php echo esc_html($ana['lowest_cost']); ?></span>
+                                </div>
+                                <div class="cost-item highlight">
+                                    <strong>最高年收益</strong>
+                                    <span><?php echo esc_html($ana['highest_income']); ?></span>
+                                </div>
+                                <div class="cost-item">
+                                    <strong>最低費用率</strong>
+                                    <span><?php echo esc_html($ana['lowest_expense']); ?></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="analysis-section">
-                    <h3>🚀 成長表現分析</h3>
-                    <div class="metric-grid">
-                        <div class="metric-box highlight">
-                            <div class="metric-value"><?php echo esc_html($ana['top_ret']); ?></div>
-                            <div class="metric-label">最佳 2025 報酬</div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="metric-value"><?php echo esc_html($ana['avg_return']); ?></div>
-                            <div class="metric-label">平均報酬率</div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="metric-value"><?php echo esc_html($ana['high_growth_count']); ?></div>
-                            <div class="metric-label">高成長 ETF (>15%)</div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="metric-value"><?php echo esc_html($ana['tech_count']); ?></div>
-                            <div class="metric-label">半導體類 ETF</div>
+                <!-- 相關資源 -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="title-icon">🔗</span>
+                            <div>
+                                <h2>相關資源與工具</h2>
+                                <span class="subtitle">快速連結到常用查詢網站</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-
-                <div class="analysis-section">
-                    <h3>💵 成本效益分析</h3>
-                    <div class="cost-grid">
-                        <div class="cost-box">
-                            <strong>最低成本入場</strong>
-                            <span><?php echo esc_html($ana['lowest_cost']); ?></span>
-                        </div>
-                        <div class="cost-box highlight">
-                            <strong>最高年收益</strong>
-                            <span><?php echo esc_html($ana['highest_income']); ?></span>
-                        </div>
-                        <div class="cost-box">
-                            <strong>最低費用率</strong>
-                            <span><?php echo esc_html($ana['lowest_expense']); ?></span>
-                        </div>
+                    <div class="resource-grid">
+                        <a href="https://www.twse.com.tw/" target="_blank" class="resource-card">
+                            <span class="resource-icon">📈</span>
+                            <div class="resource-info">
+                                <strong>台灣證券交易所</strong>
+                                <small>即時行情、公告資訊、市場統計</small>
+                            </div>
+                        </a>
+                        <a href="https://www.sitca.org.tw/" target="_blank" class="resource-card">
+                            <span class="resource-icon">💼</span>
+                            <div class="resource-info">
+                                <strong>投信投顧公會</strong>
+                                <small>ETF 淨值查詢、基金資訊</small>
+                            </div>
+                        </a>
+                        <a href="https://www.moneydj.com/etf/" target="_blank" class="resource-card">
+                            <span class="resource-icon">📊</span>
+                            <div class="resource-info">
+                                <strong>MoneyDJ ETF</strong>
+                                <small>配息公告、績效分析、持股明細</small>
+                            </div>
+                        </a>
+                        <a href="https://www.cnyes.com/ipo/" target="_blank" class="resource-card">
+                            <span class="resource-icon">🎯</span>
+                            <div class="resource-info">
+                                <strong>鉅亨網申購專區</strong>
+                                <small>新股申購資訊、抽籤結果</small>
+                            </div>
+                        </a>
+                        <a href="https://www.google.com/finance" target="_blank" class="resource-card">
+                            <span class="resource-icon">📱</span>
+                            <div class="resource-info">
+                                <strong>Google Finance</strong>
+                                <small>國際即時行情、圖表分析</small>
+                            </div>
+                        </a>
+                        <a href="https://www.investor.gov.tw/" target="_blank" class="resource-card">
+                            <span class="resource-icon">📚</span>
+                            <div class="resource-info">
+                                <strong>投資人教育網</strong>
+                                <small>投資知識、風險教育</small>
+                            </div>
+                        </a>
                     </div>
-                </div>
-            </div>
-
-            <!-- 相關資源 -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span class="title-icon">🔗</span>
-                        <h2>相關資源與工具</h2>
-                    </div>
-                </div>
-                <div class="resource-grid">
-                    <a href="https://www.twse.com.tw/" target="_blank" class="resource-link">
-                        <span class="resource-icon">📈</span>
-                        <div>
-                            <strong>台灣證券交易所</strong>
-                            <small>即時行情與公告</small>
-                        </div>
-                    </a>
-                    <a href="https://www.sitca.org.tw/" target="_blank" class="resource-link">
-                        <span class="resource-icon">💼</span>
-                        <div>
-                            <strong>投信投顧公會</strong>
-                            <small>ETF 淨值查詢</small>
-                        </div>
-                    </a>
-                    <a href="https://www.moneydj.com/etf/" target="_blank" class="resource-link">
-                        <span class="resource-icon">📊</span>
-                        <div>
-                            <strong>MoneyDJ ETF</strong>
-                            <small>配息公告與分析</small>
-                        </div>
-                    </a>
-                    <a href="https://www.cnyes.com/ipo/" target="_blank" class="resource-link">
-                        <span class="resource-icon">🎯</span>
-                        <div>
-                            <strong>鉅亨網申購專區</strong>
-                            <small>新股申購資訊</small>
-                        </div>
-                    </a>
-                    <a href="https://www.google.com/finance" target="_blank" class="resource-link">
-                        <span class="resource-icon">📱</span>
-                        <div>
-                            <strong>Google Finance</strong>
-                            <small>國際即時行情</small>
-                        </div>
-                    </a>
-                    <a href="https://www.investor.gov.tw/" target="_blank" class="resource-link">
-                        <span class="resource-icon">📚</span>
-                        <div>
-                            <strong>投資人教育網</strong>
-                            <small>投資知識學習</small>
-                        </div>
-                    </a>
                 </div>
             </div>
         </div>
 
         <script>
         jQuery(document).ready(function($) {
-            // 初始化 DataTables
             $('#etf-table').DataTable({
                 paging: false,
                 searching: false,
@@ -591,7 +657,7 @@ class Taiwan_Stock_Info_Pro_Max {
                     }
                 },
                 error: function() {
-                    status.innerHTML = '<div class="notice-error">❌ 更新失敗，請稍後再試</div>';
+                    status.innerHTML = '<div class="notice-error">❌ 更新失敗</div>';
                     btn.disabled = false;
                     btn.classList.remove('loading');
                     btn.innerHTML = '<span class="dashicons dashicons-update"></span> 手動更新資料';
@@ -603,7 +669,7 @@ class Taiwan_Stock_Info_Pro_Max {
     }
 
     private function get_etf_enhanced() {
-        $cache = get_transient('stock_etf_enhanced_v4');
+        $cache = get_transient('stock_etf_enhanced_v5');
         if ($cache) return $cache;
 
         $data = array(
@@ -667,16 +733,15 @@ class Taiwan_Stock_Info_Pro_Max {
             );
         }
 
-        set_transient('stock_etf_enhanced_v4', $result, $this->cache_time);
+        set_transient('stock_etf_enhanced_v5', $result, $this->cache_time);
         update_option('stock_etf_update_time', current_time('Y-m-d H:i:s'));
         return $result;
     }
 
     private function get_ipo_data() {
-        $cache = get_transient('stock_ipo_v4');
+        $cache = get_transient('stock_ipo_v5');
         if ($cache) return $cache;
 
-        // 一個月內的所有申購標的
         $data = array(
             array('4739','康普','上市增資','01/08-01/12','01/22','150元','預估45%','available'),
             array('1623','大東電','初上市','01/12-01/16','01/24','188元','預估147%','upcoming'),
@@ -691,9 +756,7 @@ class Taiwan_Stock_Info_Pro_Max {
             $rv = floatval(preg_replace('/[^0-9.]/', '', $d[6]));
             $ret_cls = $rv > 100 ? 'ret-super' : ($rv > 50 ? 'ret-excellent' : 'ret-good');
             $tip = $rv > 100 ? '★★★ 強推' : ($rv > 50 ? '★★ 推薦' : '★ 可參與');
-
             $type_class = strpos($d[2], '初上') !== false ? 'ipo' : 'increase';
-
             $status_map = array('available' => '可申購', 'upcoming' => '即將開放', 'closed' => '已截止');
 
             $result[] = array(
@@ -703,7 +766,7 @@ class Taiwan_Stock_Info_Pro_Max {
             );
         }
 
-        set_transient('stock_ipo_v4', $result, $this->cache_time);
+        set_transient('stock_ipo_v5', $result, $this->cache_time);
         update_option('stock_ipo_update_time', current_time('Y-m-d H:i:s'));
         return $result;
     }
@@ -799,16 +862,16 @@ class Taiwan_Stock_Info_Pro_Max {
             wp_send_json_error(array('msg' => '權限不足'));
         }
 
-        delete_transient('stock_etf_enhanced_v4');
-        delete_transient('stock_ipo_v4');
+        delete_transient('stock_etf_enhanced_v5');
+        delete_transient('stock_ipo_v5');
         $this->get_etf_enhanced();
         $this->get_ipo_data();
 
         wp_send_json_success(array('msg' => '資料更新成功！已同步最新市場資訊。'));
     }
 
-    private function css() {
-        return file_get_contents(__DIR__ . '/assets/pro-style.css');
+    private function fallback_css() {
+        return '/* Fallback CSS - 如果無法載入外部 CSS 檔案時使用 */';
     }
 }
 
