@@ -35,10 +35,6 @@ class Taiwan_Stock_Info_Pro_Max {
 
     // ========== 證交所 API 抓取函數 ==========
     
-    /**
-     * 從證交所 OpenAPI 抓取所有股票當日資料
-     * API: https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL
-     */
     private function fetch_twse_stock_day_all() {
         $url = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
         
@@ -64,7 +60,6 @@ class Taiwan_Stock_Info_Pro_Max {
             return false;
         }
 
-        // 將陣列轉換成以股票代號為 key 的關聯陣列
         $stock_map = array();
         foreach ($data as $item) {
             if (isset($item['Code'])) {
@@ -75,9 +70,6 @@ class Taiwan_Stock_Info_Pro_Max {
         return $stock_map;
     }
 
-    /**
-     * 從證交所即時 API 抓取個股資料 (備用)
-     */
     private function fetch_twse_realtime_stock($code) {
         $url = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_' . $code . '.tw&json=1&delay=0';
         
@@ -104,9 +96,6 @@ class Taiwan_Stock_Info_Pro_Max {
         return null;
     }
 
-    /**
-     * 爬取 MoneyDJ ETF 配息資訊
-     */
     private function scrape_moneydj_etf_info($code) {
         $url = 'https://www.moneydj.com/etf/x/basic/basic0004.xdjhtm?etfid=' . $code . '.TW';
         
@@ -133,26 +122,22 @@ class Taiwan_Stock_Info_Pro_Max {
             'holdings' => '資料更新中'
         );
 
-        // 解析殖利率
         if (preg_match('/近12個月殖利率.*?(\d+\.?\d*)%/isu', $html, $matches)) {
             $result['yield'] = floatval($matches[1]);
         } elseif (preg_match('/殖利率.*?(\d+\.?\d*)%/isu', $html, $matches)) {
             $result['yield'] = floatval($matches[1]);
         }
 
-        // 解析經理費
         if (preg_match('/經理費.*?(\d+\.?\d*)%/isu', $html, $matches)) {
             $result['expense'] = floatval($matches[1]);
         } elseif (preg_match('/管理費.*?(\d+\.?\d*)%/isu', $html, $matches)) {
             $result['expense'] = floatval($matches[1]);
         }
 
-        // 解析配息頻率
         if (preg_match('/配息頻率.*?(月配|季配|半年配|年配)/isu', $html, $matches)) {
             $result['freq'] = $matches[1];
         }
 
-        // 解析前三大成分股
         if (preg_match_all('/<td[^>]*>[\s]*([^<]{2,10})[\s]*<\/td>[\s]*<td[^>]*>[\s]*(\d+\.?\d*)%/isu', $html, $matches, PREG_SET_ORDER)) {
             $holdings = array();
             $count = 0;
@@ -172,14 +157,10 @@ class Taiwan_Stock_Info_Pro_Max {
         return $result;
     }
 
-    /**
-     * 主要 ETF 數據抓取函數
-     */
     private function get_etf_data() {
         $cache = get_transient('stock_etf_data');
         if ($cache) return $cache;
 
-        // 定義要追蹤的 ETF
         $etf_list = array(
             '0050' => '元大台灣50',
             '0056' => '元大高股息',
@@ -203,7 +184,6 @@ class Taiwan_Stock_Info_Pro_Max {
             '00692' => '富邦公司治理',
         );
 
-        // 1. 先從證交所 API 抓取所有股票資料
         $stock_data = $this->fetch_twse_stock_day_all();
         
         $result = array();
@@ -212,7 +192,6 @@ class Taiwan_Stock_Info_Pro_Max {
         foreach ($etf_list as $code => $name) {
             $index++;
             
-            // 從證交所資料中取得股價
             $price = 20.0;
             $change_percent = 0;
             
@@ -223,7 +202,6 @@ class Taiwan_Stock_Info_Pro_Max {
                 $change_percent = $change;
             }
 
-            // 2. 爬取配息資訊 (每 3 檔間隔一下,避免被封鎖)
             if ($index % 3 == 0) {
                 sleep(3);
             }
@@ -270,39 +248,22 @@ class Taiwan_Stock_Info_Pro_Max {
         return $result;
     }
 
-    /**
-     * 爬取 IPO 新股申購資訊
-     */
     private function get_ipo_data() {
         $cache = get_transient('stock_ipo_data');
         if ($cache) return $cache;
 
-        // IPO 資料通常需要從特定網站爬取
-        // 這裡提供範例結構,實際可以從 CMoney、玩股網等爬取
         $result = array(
             array(
-                'code' => '4739',
-                'name' => '康普',
-                'type' => '上市增資',
-                'period' => '01/08-01/12',
-                'lottery' => '01/22',
-                'price' => '150元',
-                'return' => '預估45%',
-                'tip' => '★ 可參與',
-                'status' => 'closed',
-                'status_txt' => '已截止'
+                'code' => '4739', 'name' => '康普', 'type' => '上市增資',
+                'period' => '01/08-01/12', 'lottery' => '01/22', 'price' => '150元',
+                'return' => '預估45%', 'tip' => '★ 可參與',
+                'status' => 'closed', 'status_txt' => '已截止'
             ),
             array(
-                'code' => '1623',
-                'name' => '大東電',
-                'type' => '初上市',
-                'period' => '01/12-01/16',
-                'lottery' => '01/24',
-                'price' => '188元',
-                'return' => '預估147%',
-                'tip' => '★★★ 強推',
-                'status' => 'available',
-                'status_txt' => '可申購'
+                'code' => '1623', 'name' => '大東電', 'type' => '初上市',
+                'period' => '01/12-01/16', 'lottery' => '01/24', 'price' => '188元',
+                'return' => '預估147%', 'tip' => '★★★ 強推',
+                'status' => 'available', 'status_txt' => '可申購'
             ),
         );
 
@@ -312,13 +273,251 @@ class Taiwan_Stock_Info_Pro_Max {
         return $result;
     }
 
-    // ========== 以下保持原有函數不變 ==========
+    // ========== WordPress 整合函數 ==========
 
     public function add_inline_styles() {
         $screen = get_current_screen();
         if ($screen && $screen->id === 'toplevel_page-stock-dashboard') {
-            // 你原有的 CSS 樣式
-            include(__DIR__ . '/admin-styles.php');
+            ?>
+            <style>
+            /* 原有的 CSS 樣式 - 完整保留 */
+            #wpcontent { padding-left: 0 !important; }
+            #wpfooter { display: none !important; }
+            .update-nag { display: none !important; }
+            
+            .stock-dash-pro {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100vw !important;
+                max-width: 100vw !important;
+                background: #fafafa;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                font-size: 15px;
+                line-height: 1.7;
+                color: #2c3e50;
+            }
+
+            .header {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: #ffffff;
+                padding: 35px 50px;
+                border-bottom: 5px solid #6C5CE7;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            }
+
+            .header h1 {
+                margin: 0 0 10px 0;
+                font-size: 36px;
+                font-weight: 800;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            }
+
+            .main { padding: 35px 45px; }
+
+            .control-bar {
+                background: #ffffff;
+                padding: 20px 25px;
+                margin-bottom: 25px;
+                border: 2px solid #e0e0e0;
+                border-radius: 10px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 20px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            }
+
+            .btn {
+                padding: 12px 30px;
+                border: 2px solid transparent;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: all 0.3s;
+            }
+
+            .btn-primary {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: #fff;
+                box-shadow: 0 4px 10px rgba(102,126,234,0.3);
+            }
+
+            .btn-primary:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 15px rgba(102,126,234,0.4);
+            }
+
+            .btn-secondary {
+                background: #ffffff;
+                color: #667eea;
+                border-color: #667eea;
+            }
+
+            .btn-secondary:hover {
+                background: #667eea;
+                color: #ffffff;
+            }
+
+            .status-info {
+                display: flex;
+                gap: 30px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+
+            .card {
+                background: #ffffff;
+                border: 3px solid #e8e8e8;
+                border-radius: 12px;
+                padding: 30px;
+                margin-bottom: 25px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            }
+
+            .card-header {
+                border-bottom: 4px solid #f0f0f0;
+                padding-bottom: 18px;
+                margin-bottom: 25px;
+            }
+
+            .card-header h2 {
+                margin: 0 0 8px 0;
+                font-size: 26px;
+                font-weight: 800;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+
+            .quote-box {
+                background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+                border-left: 8px solid #e17055;
+                border-radius: 12px;
+                padding: 30px 40px;
+                margin-bottom: 25px;
+                box-shadow: 0 4px 15px rgba(225,112,85,0.2);
+            }
+
+            .quote-text {
+                font-size: 19px;
+                color: #d63031;
+                margin-bottom: 15px;
+                font-weight: 700;
+            }
+
+            .quote-author {
+                font-size: 16px;
+                color: #c0392b;
+                font-weight: 800;
+                text-align: right;
+            }
+
+            .table-wrapper {
+                width: 100%;
+                overflow-x: auto;
+                border: 3px solid #dfe6e9;
+                border-radius: 10px;
+            }
+
+            table {
+                width: 100%;
+                border-collapse: separate;
+                border-spacing: 0;
+                font-size: 15px;
+            }
+
+            thead {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+
+            th {
+                padding: 18px 16px;
+                text-align: center;
+                font-weight: 800;
+                color: #ffffff;
+                border-right: 2px solid rgba(255,255,255,0.2);
+            }
+
+            tbody tr:nth-child(odd) { background: #f8f9fa; }
+            tbody tr:nth-child(even) { background: #ffffff; }
+            tbody tr:hover {
+                background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+                transform: scale(1.005);
+            }
+
+            td {
+                padding: 16px;
+                border-right: 2px solid #ecf0f1;
+                color: #2c3e50;
+                font-weight: 600;
+                text-align: center;
+            }
+
+            .link {
+                color: #667eea;
+                text-decoration: none;
+                font-weight: 800;
+            }
+
+            .link:hover { color: #764ba2; }
+
+            .red { color: #e74c3c !important; font-weight: 800 !important; }
+            .green { color: #27ae60 !important; font-weight: 800 !important; }
+            .orange { color: #f39c12 !important; font-weight: 800 !important; }
+
+            .label {
+                display: inline-block;
+                padding: 6px 14px;
+                font-size: 13px;
+                font-weight: 800;
+                border-radius: 25px;
+                background: linear-gradient(135deg, #a8e6cf 0%, #dcedc1 100%);
+                color: #27ae60;
+                border: 2px solid #27ae60;
+            }
+
+            .label.primary {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: #ffffff;
+                border-color: #667eea;
+            }
+
+            .label.danger {
+                background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+                color: #ffffff;
+                border-color: #e74c3c;
+            }
+
+            .message {
+                padding: 18px 25px;
+                border-radius: 10px;
+                font-size: 15px;
+                margin-top: 15px;
+                font-weight: 700;
+            }
+
+            .message-success {
+                background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+                color: #2e7d32;
+                border: 3px solid #4caf50;
+            }
+
+            .message-error {
+                background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+                color: #c62828;
+                border: 3px solid #f44336;
+            }
+
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+
+            .spin { animation: spin 1s linear infinite; }
+            </style>
+            <?php
         }
     }
 
@@ -348,7 +547,6 @@ class Taiwan_Stock_Info_Pro_Max {
         $minute = (int)date('i', $now);
         $time_decimal = $hour + ($minute / 60);
 
-        // 週一到週五 7:00-14:30 才更新
         if ($day_of_week >= 1 && $day_of_week <= 5 && $time_decimal >= 7 && $time_decimal <= 14.5) {
             delete_transient('stock_etf_data');
             delete_transient('stock_ipo_data');
@@ -423,52 +621,9 @@ class Taiwan_Stock_Info_Pro_Max {
         $yields = array_column($etf, 'yield_val');
         $returns = array_column($etf, 'return_val');
         
-        $high_yield = array_filter($etf, function($e) { return $e['yield_val'] > 10; });
-        $high_growth = array_filter($etf, function($e) { return $e['return_val'] > 15; });
-        $monthly = array_filter($etf, function($e) { return strpos($e['freq'], '月') !== false; });
-        $tech = array_filter($etf, function($e) { 
-            return strpos($e['holdings'], '台積電') !== false || strpos($e['holdings'], '聯發科') !== false; 
-        });
-
-        usort($etf, function($a, $b) { return $b['yield_val'] <=> $a['yield_val']; });
-        $top_yield_etfs = array_slice(array_column($etf, 'code'), 0, 3);
-
-        usort($etf, function($a, $b) { return $b['return_val'] <=> $a['return_val']; });
-        $top_growth_etfs = array_slice(array_column($etf, 'code'), 0, 3);
-
         return array(
             'top_yield' => round(max($yields), 2) . '%',
             'avg_yield' => round(array_sum($yields) / count($yields), 2) . '%',
-            'high_yield_count' => count($high_yield),
-            'top_return' => '+' . round(max($returns), 2) . '%',
-            'avg_return' => '+' . round(array_sum($returns) / count($returns), 2) . '%',
-            'high_growth_count' => count($high_growth),
-            'monthly_count' => count($monthly),
-            'tech_count' => count($tech),
-            'strategies' => array(
-                array(
-                    'title' => '高配息策略',
-                    'etfs' => $top_yield_etfs,
-                    'desc' => '專注於高殖利率 ETF,適合追求穩定現金流的投資人',
-                    'pros' => array(
-                        '年化配息率 ' . round(max($yields), 1) . '%',
-                        '分散持股降低風險',
-                        '適合退休規劃與被動收入'
-                    ),
-                    'risk' => '低'
-                ),
-                array(
-                    'title' => '成長動能策略',
-                    'etfs' => $top_growth_etfs,
-                    'desc' => '聚焦高成長性 ETF,適合長期資本增值',
-                    'pros' => array(
-                        '年化報酬率 ' . round(max($returns), 1) . '%',
-                        '掌握科技成長趨勢',
-                        '適合長期投資累積財富'
-                    ),
-                    'risk' => '中高'
-                )
-            )
         );
     }
 
@@ -478,13 +633,170 @@ class Taiwan_Stock_Info_Pro_Max {
         $etf = $this->get_etf_data();
         $ipo = $this->get_ipo_data();
         $quote = $this->get_quote();
-        $analysis = $this->analyze_data($etf);
 
         $etf_time = get_option('stock_etf_update_time', '尚未更新');
         $ipo_time = get_option('stock_ipo_update_time', '尚未更新');
 
-        // 你原有的 HTML 輸出
-        include(__DIR__ . '/admin-template.php');
+        ?>
+        <div class="stock-dash-pro">
+            <div class="header">
+                <h1>📊 台股資訊中心 Pro Max</h1>
+                <p>ETF 配息與新股申購即時資訊 | 自動從證交所 API 抓取</p>
+            </div>
+
+            <div class="main">
+                <div class="control-bar">
+                    <div>
+                        <button class="btn btn-primary" onclick="updateData()" id="update-btn">🔄 手動更新資料</button>
+                        <button class="btn btn-secondary" onclick="location.reload()">♻️ 重新載入頁面</button>
+                    </div>
+                    <div class="status-info">
+                        <div><span>ETF 更新:</span> <strong><?php echo esc_html($etf_time); ?></strong></div>
+                        <div><span>IPO 更新:</span> <strong><?php echo esc_html($ipo_time); ?></strong></div>
+                        <div><span>系統時間:</span> <strong><?php echo current_time('Y-m-d H:i:s'); ?></strong></div>
+                    </div>
+                </div>
+                
+                <div id="status-msg"></div>
+
+                <div class="quote-box">
+                    <div class="quote-text"><?php echo esc_html($quote[0]); ?></div>
+                    <div class="quote-author">—— <?php echo esc_html($quote[1]); ?>（<?php echo esc_html($quote[2]); ?>）</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📈 ETF 投資分析表</h2>
+                        <span class="subtitle">共 <?php echo count($etf); ?> 檔 ETF - 自動從證交所 API 更新</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="etf-table">
+                            <thead>
+                                <tr>
+                                    <th>代號</th>
+                                    <th>名稱</th>
+                                    <th>股價</th>
+                                    <th>殖利率</th>
+                                    <th>配息/股</th>
+                                    <th>張成本</th>
+                                    <th>年收益</th>
+                                    <th>費用率</th>
+                                    <th>配息頻率</th>
+                                    <th>2025報酬</th>
+                                    <th>主要成分股</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($etf as $e): ?>
+                                <tr>
+                                    <td><a href="<?php echo esc_url($this->get_etf_url($e['code'])); ?>" target="_blank" class="link"><?php echo esc_html($e['code']); ?></a></td>
+                                    <td><a href="<?php echo esc_url($this->get_etf_url($e['code'])); ?>" target="_blank" class="link"><?php echo esc_html($e['name']); ?></a></td>
+                                    <td class="orange"><?php echo esc_html($e['price']); ?></td>
+                                    <td class="red"><?php echo esc_html($e['yield']); ?></td>
+                                    <td class="red"><?php echo esc_html($e['dividend']); ?></td>
+                                    <td><?php echo esc_html($e['cost_per_lot']); ?></td>
+                                    <td class="green"><?php echo esc_html($e['annual_income']); ?></td>
+                                    <td><?php echo esc_html($e['expense']); ?></td>
+                                    <td><span class="label primary"><?php echo esc_html($e['freq']); ?></span></td>
+                                    <td class="<?php echo $e['return_val'] > 0 ? 'green' : 'red'; ?>"><?php echo esc_html($e['ret']); ?></td>
+                                    <td><?php echo esc_html($e['holdings']); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <?php if (!empty($ipo)): ?>
+                <div class="card">
+                    <div class="card-header">
+                        <h2>🎯 新股申購時程表</h2>
+                        <span class="subtitle">共 <?php echo count($ipo); ?> 檔標的</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="ipo-table">
+                            <thead>
+                                <tr>
+                                    <th>代號</th>
+                                    <th>名稱</th>
+                                    <th>類型</th>
+                                    <th>申購期間</th>
+                                    <th>開獎日</th>
+                                    <th>承銷價</th>
+                                    <th>預估報酬</th>
+                                    <th>建議</th>
+                                    <th>狀態</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($ipo as $i): ?>
+                                <tr>
+                                    <td><a href="<?php echo esc_url($this->get_stock_url($i['code'])); ?>" target="_blank" class="link"><?php echo esc_html($i['code']); ?></a></td>
+                                    <td><a href="<?php echo esc_url($this->get_stock_url($i['code'])); ?>" target="_blank" class="link"><?php echo esc_html($i['name']); ?></a></td>
+                                    <td><span class="label"><?php echo esc_html($i['type']); ?></span></td>
+                                    <td><?php echo esc_html($i['period']); ?></td>
+                                    <td><?php echo esc_html($i['lottery']); ?></td>
+                                    <td class="orange"><?php echo esc_html($i['price']); ?></td>
+                                    <td class="red"><?php echo esc_html($i['return']); ?></td>
+                                    <td><?php echo esc_html($i['tip']); ?></td>
+                                    <td>
+                                        <span class="label <?php echo $i['status'] === 'available' ? 'primary' : 'danger'; ?>">
+                                            <?php echo esc_html($i['status_txt']); ?>
+                                        </span>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            $('#etf-table').DataTable({
+                pageLength: 20,
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/zh-HANT.json'
+                }
+            });
+
+            $('#ipo-table').DataTable({
+                pageLength: 10,
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/zh-HANT.json'
+                }
+            });
+        });
+
+        function updateData() {
+            var btn = document.getElementById('update-btn');
+            var msg = document.getElementById('status-msg');
+            
+            btn.disabled = true;
+            btn.innerHTML = '🔄 更新中...';
+            msg.innerHTML = '<div class="message message-info">正在從證交所 API 抓取資料,請稍候...</div>';
+
+            jQuery.post(ajaxurl, {
+                action: 'stock_update',
+                nonce: '<?php echo wp_create_nonce('stock_update'); ?>'
+            }, function(response) {
+                if (response.success) {
+                    msg.innerHTML = '<div class="message message-success">' + response.data.msg + '</div>';
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    msg.innerHTML = '<div class="message message-error">更新失敗: ' + response.data.msg + '</div>';
+                    btn.disabled = false;
+                    btn.innerHTML = '🔄 手動更新資料';
+                }
+            });
+        }
+        </script>
+        <?php
     }
 }
 
